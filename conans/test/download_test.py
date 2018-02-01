@@ -1,4 +1,5 @@
 import os
+import mock
 import unittest
 
 from conans.client.manager import CONANFILE
@@ -8,7 +9,7 @@ from conans.model.manifest import FileTreeManifest
 from conans.model.ref import ConanFileReference, PackageReference
 from conans.paths import CONAN_MANIFEST, CONANINFO
 from conans.test.utils.test_files import hello_source_files
-from conans.test.utils.tools import TestClient, TestServer
+from conans.test.utils.tools import TestClient, TestRequester, TestServer
 from conans.util.files import save
 
 
@@ -25,57 +26,62 @@ class HelloConan(ConanFile):
 class DownloadTest(unittest.TestCase):
 
     def test_returns_on_failures(self):
+        """
+        Test client handles return codes 404 and 500 from server
+        """
         test_server = TestServer([("*/*@*/*", "*")], [("*/*@*/*", "*")])
         servers = {"default": test_server}
-        client2 = TestClient(servers=servers)
-        client2.init_dynamic_vars()
+        client = TestClient(servers=servers, requester_class=TestRequester)
+        client.init_dynamic_vars()
 
         conan_ref = ConanFileReference.loads("Hello/1.2.1@frodo/stable")
         package_ref = PackageReference(conan_ref, "123123123")
 
         class Response(object):
+            charset = None
+            headers = {}
             ok = None
             status_code = None
-            charset = None
             text = ""
 
             def __init__(self, ok, status_code):
                 self.ok = ok
                 self.status_code = status_code
 
-        class BuggyRequester(object):
-            def get(self, *args, **kwargs):
-                return Response(False, 404)
+        with mock.patch.object(TestRequester, 'get', return_value=Response(False, 404)) as mocked_get:
+            # Checking right behaviour from installed when server returns 404
+            # also checks that mocked method in requester has been invoked
+            installer = ConanProxy(client.paths, client.user_io, client.remote_manager, "default")
 
-        client2.remote_manager._remote_client._rest_client.requester = BuggyRequester()
-        installer = ConanProxy(client2.paths, client2.user_io, client2.remote_manager, "default")
+            with self.assertRaises(NotFoundException):
+                installer.get_recipe(conan_ref)
+            self.assertEqual(mocked_get.call_count, 1)
 
-        with self.assertRaises(NotFoundException) as exc:
-            installer.get_recipe(conan_ref)
+            self.assertFalse(installer.package_available(package_ref, False, True))
+            self.assertEqual(mocked_get.call_count, 2)
 
-        self.assertFalse(installer.package_available(package_ref, False, True))
+        with mock.patch.object(TestRequester, 'get', return_value=Response(False, 500)) as mocked_get:
+            # Checking right behaviour from installer when server returns 500
+            # also checks that mocked method in requester has been invoked
+            installer = ConanProxy(client.paths, client.user_io, client.remote_manager, "default")
 
-        class BuggyRequester2(object):
-            def get(self, *args, **kwargs):
-                return Response(False, 500)
+            try:
+                installer.get_recipe(conan_ref)
+            except NotFoundException:
+                self.assertFalse(True)  # Shouldn't capture here
+            except ConanException:
+                pass
 
-        client2.remote_manager._remote_client._rest_client.requester = BuggyRequester2()
-        installer = ConanProxy(client2.paths, client2.user_io, client2.remote_manager, "default")
+            self.assertEqual(mocked_get.call_count, 1)
 
-        try:
-            installer.get_recipe(conan_ref)
-        except NotFoundException:
-            self.assertFalse(True)  # Shouldn't capture here
-        except ConanException:
-            pass
+            try:
+                installer.package_available(package_ref, False, True)
+            except NotFoundException:
+                self.assertFalse(True)  # Shouldn't capture here
+            except ConanException:
+                pass
 
-        try:
-            installer.package_available(package_ref, False, True)
-        except NotFoundException:
-            self.assertFalse(True)  # Shouldn't capture here
-        except ConanException:
-            pass
-
+            self.assertEqual(mocked_get.call_count, 2)
 
     def complete_test(self):
         """ basic installation of a new conans
