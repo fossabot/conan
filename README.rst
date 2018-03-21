@@ -1,3 +1,5 @@
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fpvicente%2Fconan.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fpvicente%2Fconan?ref=badge_shield)
+
 Conan
 =====
 
@@ -256,3 +258,7 @@ License
 .. _`pip docs`: https://pip.pypa.io/en/stable/installing/
 
 .. _`brew homepage`: http://brew.sh/
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fpvicente%2Fconan.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fpvicente%2Fconan?ref=badge_large)
